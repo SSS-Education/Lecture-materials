@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>気体分子運動論3D可視化</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            background-color: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+        }
+        #canvas-container {
+            flex: 1;
+            position: relative;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            width: 280px;
+            max-height: 90vh;
+            overflow-y: auto;
+            font-size: 14px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            width: 320px;
+        }
+        #distribution-canvas {
+            width: 100%;
+            height: 180px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        .stats {
+            margin-top: 15px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .legend {
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        .legend-item {
+            display: inline-block;
+            margin-right: 15px;
+        }
+        .color-box {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+        /* モバイル用のボタン */
+        #mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 20px;
+            width: 40px;
+            height: 40px;
+        }
+        
+        #mobile-info-btn {
+            display: none;
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 20px;
+            width: 40px;
+            height: 40px;
+        }
+        
+        /* モバイル対応 */
+        @media (max-width: 768px) {
+            #mobile-menu-btn, #mobile-info-btn {
+                display: block;
+            }
+            
+            #controls, #info-panel {
+                position: fixed;
+                width: 90%;
+                max-width: 400px;
+                top: 60px;
+                transform: translateX(-110%);
+                transition: transform 0.3s ease;
+                z-index: 999;
+                max-height: 80vh;
+            }
+            
+            #controls {
+                left: 5%;
+            }
+            
+            #info-panel {
+                right: auto;
+                left: 5%;
+                transform: translateX(110vw);
+            }
+            
+            #controls.show {
+                transform: translateX(0);
+            }
+            
+            #info-panel.show {
+                transform: translateX(0);
+            }
+            
+            button {
+                padding: 10px 16px;
+                font-size: 16px;
+            }
+            
+            .control-group label {
+                font-size: 16px;
+            }
+            
+            h3 {
+                font-size: 18px;
+            }
+            
+            .stats {
+                font-size: 14px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            #controls, #info-panel {
+                width: 95%;
+                font-size: 14px;
+            }
+            
+            #distribution-canvas {
+                height: 150px;
+            }
+        }
+        
+        /* 画面が横向きの場合 */
+        @media (max-width: 768px) and (orientation: landscape) {
+            #controls, #info-panel {
+                max-height: 90vh;
+                top: 50px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button id="mobile-menu-btn">☰</button>
+    <button id="mobile-info-btn">📊</button>
+    
+    <div id="canvas-container"></div>
+    
+    <div id="controls">
+        <h3>気体分子運動シミュレーション</h3>
+        
+        <div class="control-group">
+            <label>粒子数: <span id="particle-count">50</span></label>
+            <input type="range" id="particles" min="1" max="500" value="50" step="1">
+        </div>
+        
+        <div class="control-group">
+            <label>温度 (K): <span id="temperature-value">300</span></label>
+            <input type="range" id="temperature" min="10" max="5000" value="300" step="10">
+        </div>
+        
+        <div class="control-group">
+            <label>時間スケール: <span id="time-scale-value">1</span></label>
+            <input type="range" id="time-scale" min="0" max="10" value="1" step="0.1">
+        </div>
+        
+        <div class="control-group">
+            <button id="reset-btn">スタート</button>
+            <button id="pause-btn">一時停止</button>
+        </div>
+        
+        <div class="control-group">
+            <label>力の可視化:</label>
+            <label>
+                <input type="checkbox" id="show-wall-forces"> 壁への衝突力
+            </label>
+            <label>
+                <input type="checkbox" id="show-pressure-vectors"> 面ごとの圧力
+            </label>
+        </div>
+        
+        <div class="legend">
+            <h4>速度による色分け:</h4>
+            <div class="legend-item">
+                <span class="color-box" style="background: #0066ff;"></span>低速
+            </div>
+            <div class="legend-item">
+                <span class="color-box" style="background: #00ff00;"></span>中速
+            </div>
+            <div class="legend-item">
+                <span class="color-box" style="background: #ff0000;"></span>高速
+            </div>
+        </div>
+    </div>
+    
+    <div id="info-panel">
+        <h3>マクスウェル・ボルツマン分布</h3>
+        <canvas id="distribution-canvas"></canvas>
+        
+        <div class="stats">
+            <div>平均速度: <span id="avg-speed">0</span> m/s</div>
+            <div>最確速度: <span id="most-probable-speed">0</span> m/s</div>
+            <div>平均運動エネルギー: <span id="avg-energy">0</span> × 10⁻²¹ J</div>
+            <div>粒子密度: <span id="density">0</span> 個/nm³</div>
+            <div>（箱のサイズ: 10 = 10 nm）</div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // 定数
+        const k_B = 1.380649e-23; // ボルツマン定数
+        const m_gas = 4.65e-26; // 窒素分子質量
+        
+        // 変数
+        let scene, camera, renderer;
+        let particles = [];
+        let boxSize = 10;
+        let temperature = 300;
+        let particleCount = 50;
+        let timeScale = 1;
+        let isPaused = false;
+        let animationId;
+        
+        // 力の可視化用
+        let wallForces = [];
+        let wallImpacts = [];
+        let pressureVectors = [];
+        let showWallForces = false;
+        let showPressureVectors = false;
+        let wallImpulses = {
+            '+x': 0, '-x': 0,
+            '+y': 0, '-y': 0,
+            '+z': 0, '-z': 0
+        };
+        
+        // 初期化
+        function init() {
+            // シーン
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            
+            // カメラ
+            camera = new THREE.PerspectiveCamera(
+                60,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                100
+            );
+            camera.position.set(15, 10, 15);
+            camera.lookAt(0, 0, 0);
+            
+            // レンダラー
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            
+            // ライト
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+            
+            // 箱を作成
+            createBox();
+            
+            // 粒子を作成
+            createParticles();
+            
+            // マウスコントロール
+            setupMouseControls();
+            
+            // イベントリスナー
+            setupEventListeners();
+            
+            // アニメーション開始
+            animate();
+        }
+        
+        function createBox() {
+            // 箱の枠
+            const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
+            const edges = new THREE.EdgesGeometry(geometry);
+            const line = new THREE.LineSegments(
+                edges,
+                new THREE.LineBasicMaterial({ color: 0x00ff00 })
+            );
+            scene.add(line);
+            
+            // 半透明の壁
+            const wallMaterial = new THREE.MeshBasicMaterial({
+                color: 0x004400,
+                transparent: true,
+                opacity: 0.1,
+                side: THREE.DoubleSide
+            });
+            const box = new THREE.Mesh(geometry, wallMaterial);
+            scene.add(box);
+        }
+        
+        function initOrthoViews() {
+            const views = ['xy', 'yz', 'zx'];
+            const extent = boxSize * 0.6;
+            
+            views.forEach(view => {
+                // 既存のレンダラーがあれば削除
+                if (orthoRenderers[view]) {
+                    orthoRenderers[view].dispose();
+                }
+                
+                // キャンバス取得
+                const canvas = document.getElementById(`${view}-view`);
+                if (!canvas) return;
+                
+                // レンダラー作成
+                const renderer = new THREE.WebGLRenderer({ 
+                    canvas: canvas,
+                    antialias: false,
+                    powerPreference: "low-power"
+                });
+                renderer.setSize(200, 200);
+                renderer.setClearColor(0x0a0a0a, 1);
+                orthoRenderers[view] = renderer;
+                
+                // シーン作成
+                const scene = new THREE.Scene();
+                orthoScenes[view] = scene;
+                
+                // 正射影カメラ作成
+                const camera = new THREE.OrthographicCamera(
+                    -extent, extent,
+                    extent, -extent,
+                    0.1, 100
+                );
+                
+                // カメラ位置設定
+                if (view === 'xy') {
+                    camera.position.set(0, 0, 20);
+                    camera.lookAt(0, 0, 0);
+                } else if (view === 'yz') {
+                    camera.position.set(20, 0, 0);
+                    camera.lookAt(0, 0, 0);
+                } else if (view === 'zx') {
+                    camera.position.set(0, 20, 0);
+                    camera.lookAt(0, 0, 0);
+                    camera.up.set(0, 0, 1);
+                }
+                
+                orthoCameras[view] = camera;
+                
+                // ライト追加
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
+                if (view === 'xy') {
+                    directionalLight.position.set(0, 0, 10);
+                } else if (view === 'yz') {
+                    directionalLight.position.set(10, 0, 0);
+                } else if (view === 'zx') {
+                    directionalLight.position.set(0, 10, 0);
+                }
+                scene.add(directionalLight);
+                
+                // 箱の枠を追加
+                const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
+                const edges = new THREE.EdgesGeometry(geometry);
+                const line = new THREE.LineSegments(
+                    edges,
+                    new THREE.LineBasicMaterial({ color: 0x00ff00, opacity: 0.5, transparent: true })
+                );
+                line.name = 'box-frame';
+                line.userData.boxSize = boxSize;
+                scene.add(line);
+            });
+            
+            console.log('Ortho views initialized:', orthoRenderers);
+        }
+        
+        function updateOrthoViews() {
+            if (!showOrthoViews || !orthoScenes.xy) return;
+            
+            const views = ['xy', 'yz', 'zx'];
+            
+            views.forEach(view => {
+                const scene = orthoScenes[view];
+                const camera = orthoCameras[view];
+                const renderer = orthoRenderers[view];
+                
+                if (!scene || !camera || !renderer) return;
+                
+                // 共有ジオメトリを先に定義
+                const sphereGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+                
+                // すべての子オブジェクトを削除（箱とライト以外）
+                const toRemove = [];
+                scene.children.forEach(child => {
+                    if (child.name !== 'box-frame' && !child.isLight) {
+                        toRemove.push(child);
+                    }
+                });
+                toRemove.forEach(child => {
+                    scene.remove(child);
+                    if (child.geometry && child.geometry !== sphereGeometry) {
+                        child.geometry.dispose();
+                    }
+                    if (child.material) {
+                        child.material.dispose();
+                    }
+                });
+                
+                // 粒子を追加（現在の位置で）
+                particles.forEach(particle => {
+                    const material = new THREE.MeshPhongMaterial({
+                        color: particle.mesh.material.color,
+                        emissive: particle.mesh.material.emissive,
+                        emissiveIntensity: 0.5
+                    });
+                    const mesh = new THREE.Mesh(sphereGeometry, material);
+                    
+                    // 現在の粒子の位置をコピー
+                    mesh.position.copy(particle.mesh.position);
+                    
+                    scene.add(mesh);
+                });
+                
+                // 壁への衝突力ベクトルを表示
+                if (showWallForces) {
+                    wallForces.forEach(force => {
+                        if (force.line && force.cone) {
+                            // ラインの始点と終点を取得
+                            const positions = force.line.geometry.attributes.position;
+                            if (!positions) return;
+                            
+                            const posArray = positions.array;
+                            const start = new THREE.Vector3(posArray[0], posArray[1], posArray[2]);
+                            const end = new THREE.Vector3(posArray[3], posArray[4], posArray[5]);
+                            const direction = end.clone().sub(start).normalize();
+                            
+                            // 表示すべきかチェック
+                            let shouldShow = false;
+                            if (view === 'xy' && Math.abs(direction.z) > 0.9) shouldShow = true;
+                            if (view === 'yz' && Math.abs(direction.x) > 0.9) shouldShow = true;
+                            if (view === 'zx' && Math.abs(direction.y) > 0.9) shouldShow = true;
+                            
+                            if (shouldShow) {
+                                // ラインを作成
+                                const lineGeometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+                                const lineMaterial = new THREE.LineBasicMaterial({ 
+                                    color: force.line.material.color,
+                                    opacity: force.line.material.opacity || 1,
+                                    transparent: true
+                                });
+                                const line = new THREE.Line(lineGeometry, lineMaterial);
+                                scene.add(line);
+                                
+                                // コーンを作成
+                                const coneGeometry = new THREE.ConeGeometry(0.2, 0.5, 8);
+                                const coneMaterial = new THREE.MeshBasicMaterial({ 
+                                    color: force.cone.material.color,
+                                    opacity: force.cone.material.opacity || 1,
+                                    transparent: true
+                                });
+                                const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+                                cone.position.copy(force.cone.position);
+                                cone.quaternion.copy(force.cone.quaternion);
+                                scene.add(cone);
+                            }
+                        }
+                    });
+                    
+                    // 衝突点の表示
+                    wallImpacts.forEach(impact => {
+                        if (impact.mesh) {
+                            const position = impact.mesh.position;
+                            let shouldShow = false;
+                            
+                            if (view === 'xy' && Math.abs(position.z) > boxSize/2 - 0.2) shouldShow = true;
+                            if (view === 'yz' && Math.abs(position.x) > boxSize/2 - 0.2) shouldShow = true;
+                            if (view === 'zx' && Math.abs(position.y) > boxSize/2 - 0.2) shouldShow = true;
+                            
+                            if (shouldShow) {
+                                const circleGeometry = new THREE.CircleGeometry(0.3, 16);
+                                const circleMaterial = new THREE.MeshBasicMaterial({
+                                    color: 0xffff00,
+                                    transparent: true,
+                                    opacity: impact.mesh.material.opacity || 0.8,
+                                    side: THREE.DoubleSide
+                                });
+                                const circle = new THREE.Mesh(circleGeometry, circleMaterial);
+                                circle.position.copy(position);
+                                
+                                if (view === 'yz') {
+                                    circle.rotation.y = Math.PI / 2;
+                                } else if (view === 'zx') {
+                                    circle.rotation.x = Math.PI / 2;
+                                }
+                                
+                                scene.add(circle);
+                            }
+                        }
+                    });
+                }
+                
+                // 面ごとの圧力ベクトルを表示
+                if (showPressureVectors && pressureVectors.length > 0) {
+                    for (let i = 0; i < pressureVectors.length; i += 2) {
+                        const cylinder = pressureVectors[i];
+                        const cone = pressureVectors[i + 1];
+                        
+                        if (cylinder && cone) {
+                            const position = cylinder.position;
+                            let shouldShow = false;
+                            
+                            if (view === 'xy' && Math.abs(position.z) > boxSize/2 - 0.1) shouldShow = true;
+                            if (view === 'yz' && Math.abs(position.x) > boxSize/2 - 0.1) shouldShow = true;
+                            if (view === 'zx' && Math.abs(position.y) > boxSize/2 - 0.1) shouldShow = true;
+                            
+                            if (shouldShow) {
+                                // シリンダーをコピー
+                                const cylGeometry = cylinder.geometry.clone();
+                                const cylMaterial = cylinder.material.clone();
+                                const newCylinder = new THREE.Mesh(cylGeometry, cylMaterial);
+                                newCylinder.position.copy(cylinder.position);
+                                newCylinder.quaternion.copy(cylinder.quaternion);
+                                scene.add(newCylinder);
+                                
+                                // コーンをコピー
+                                const coneGeometry = cone.geometry.clone();
+                                const coneMaterial = cone.material.clone();
+                                const newCone = new THREE.Mesh(coneGeometry, coneMaterial);
+                                newCone.position.copy(cone.position);
+                                newCone.quaternion.copy(cone.quaternion);
+                                scene.add(newCone);
+                            }
+                        }
+                    }
+                }
+                
+                // 箱のサイズが変更された場合は更新
+                const existingBox = scene.getObjectByName('box-frame');
+                if (existingBox && existingBox.userData.boxSize !== boxSize) {
+                    scene.remove(existingBox);
+                    const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
+                    const edges = new THREE.EdgesGeometry(geometry);
+                    const line = new THREE.LineSegments(
+                        edges,
+                        new THREE.LineBasicMaterial({ color: 0x00ff00, opacity: 0.5, transparent: true })
+                    );
+                    line.name = 'box-frame';
+                    line.userData.boxSize = boxSize;
+                    scene.add(line);
+                }
+                
+                // レンダリング
+                renderer.render(scene, camera);
+            });
+            
+            // ジオメトリの破棄
+            sphereGeometry.dispose();
+        }
+        
+        function createParticles() {
+            // 既存の粒子を削除
+            particles.forEach(p => scene.remove(p.mesh));
+            particles = [];
+            
+            // 力の可視化もリセット
+            wallForces.forEach(force => {
+                scene.remove(force.line);
+                scene.remove(force.cone);
+            });
+            wallForces = [];
+            wallImpacts.forEach(impact => scene.remove(impact.mesh));
+            wallImpacts = [];
+            pressureVectors.forEach(vector => scene.remove(vector));
+            pressureVectors = [];
+            Object.keys(wallImpulses).forEach(key => {
+                wallImpulses[key] = 0;
+            });
+            
+            // 球のジオメトリ（共有）
+            const geometry = new THREE.SphereGeometry(0.15, 16, 16);
+            
+            for (let i = 0; i < particleCount; i++) {
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0xffffff,
+                    emissive: 0x000000,
+                    emissiveIntensity: 0.5
+                });
+                
+                const mesh = new THREE.Mesh(geometry, material);
+                
+                // ランダムな位置
+                mesh.position.set(
+                    (Math.random() - 0.5) * (boxSize - 0.4),
+                    (Math.random() - 0.5) * (boxSize - 0.4),
+                    (Math.random() - 0.5) * (boxSize - 0.4)
+                );
+                
+                // マクスウェル・ボルツマン分布に従う速度
+                const velocity = generateVelocity();
+                
+                particles.push({
+                    mesh: mesh,
+                    velocity: velocity
+                });
+                
+                scene.add(mesh);
+            }
+        }
+        
+        function generateVelocity() {
+            // Box-Muller変換で正規分布を生成
+            const sigma = Math.sqrt(k_B * temperature / m_gas);
+            
+            function gaussian() {
+                const u1 = Math.random();
+                const u2 = Math.random();
+                return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+            }
+            
+            return new THREE.Vector3(
+                gaussian() * sigma * 0.001,
+                gaussian() * sigma * 0.001,
+                gaussian() * sigma * 0.001
+            );
+        }
+        
+        function updateParticles(deltaTime) {
+            if (isPaused || timeScale === 0) return;
+            
+            const dt = deltaTime * timeScale;
+            const halfBox = boxSize / 2;
+            
+            particles.forEach((particle, i) => {
+                // 位置を更新
+                particle.mesh.position.add(
+                    particle.velocity.clone().multiplyScalar(dt)
+                );
+                
+                // 壁との衝突
+                ['x', 'y', 'z'].forEach(axis => {
+                    if (Math.abs(particle.mesh.position[axis]) > halfBox - 0.15) {
+                        const oldVel = particle.velocity[axis];
+                        particle.velocity[axis] *= -1;
+                        particle.mesh.position[axis] = 
+                            Math.sign(particle.mesh.position[axis]) * (halfBox - 0.15);
+                        
+                        // 壁への力を記録
+                        if (showWallForces || showPressureVectors) {
+                            const speed = Math.abs(oldVel);
+                            const impulse = 2 * m_gas * speed;
+                            const wallNormal = new THREE.Vector3(0, 0, 0);
+                            wallNormal[axis] = -Math.sign(particle.mesh.position[axis]);
+                            
+                            // 個別の衝突力の可視化
+                            if (showWallForces) {
+                                const impactPos = particle.mesh.position.clone();
+                                impactPos[axis] = Math.sign(impactPos[axis]) * halfBox;
+                                
+                                addWallForce(impactPos, wallNormal, impulse);
+                                addWallImpact(impactPos, axis);
+                            }
+                            
+                            // 面ごとの力積を累積
+                            const wallKey = (particle.mesh.position[axis] > 0 ? '+' : '-') + axis;
+                            wallImpulses[wallKey] += impulse;
+                        }
+                    }
+                });
+                
+                // 他の粒子との衝突（簡易版）
+                for (let j = i + 1; j < particles.length; j++) {
+                    const other = particles[j];
+                    const distance = particle.mesh.position.distanceTo(other.mesh.position);
+                    
+                    if (distance < 0.3) {
+                        // 衝突処理
+                        const normal = particle.mesh.position.clone()
+                            .sub(other.mesh.position).normalize();
+                        
+                        const relVel = particle.velocity.clone().sub(other.velocity);
+                        const speed = relVel.dot(normal);
+                        
+                        if (speed > 0) continue;
+                        
+                        particle.velocity.sub(normal.clone().multiplyScalar(speed));
+                        other.velocity.add(normal.clone().multiplyScalar(speed));
+                    }
+                }
+                
+                // 速度に応じて色を変更
+                updateParticleColor(particle);
+            });
+            
+            // 力の可視化を更新
+            updateForceVisualizations(dt);
+        }
+        
+        function addWallForce(position, normal, impulse) {
+            // 矢印の原点を壁の表面に設定
+            const origin = position.clone();
+            // 矢印の方向は壁の外側へ（法線の反対方向 = 外向き）
+            const direction = normal.clone().negate();
+            
+            // 力の大きさに応じた長さ
+            // 速度に基づいてスケーリング（より現実的な範囲に）
+            const speed = Math.sqrt(impulse / (2 * m_gas)) * 1000; // m/s
+            const lengthRatio = Math.min(speed / 1500, 1); // 1500 m/sを基準
+            const length = 0.5 + lengthRatio * 2.5; // 0.5～3.0の範囲
+            
+            // 色の計算（速度ベースで粒子と同じ色分け）
+            const color = getSpeedBasedColor(speed);
+            
+            // 線を描画
+            const geometry = new THREE.BufferGeometry();
+            const points = [];
+            points.push(origin);
+            points.push(origin.clone().add(direction.clone().multiplyScalar(length)));
+            geometry.setFromPoints(points);
+            
+            const lineMaterial = new THREE.LineBasicMaterial({ 
+                color: color,
+                linewidth: 3,
+                transparent: true,
+                opacity: 1.0
+            });
+            const line = new THREE.Line(geometry, lineMaterial);
+            
+            // 矢印の先端にコーンを追加
+            const coneSize = 0.15 + lengthRatio * 0.15; // サイズも調整
+            const coneGeometry = new THREE.ConeGeometry(coneSize, coneSize * 2.5, 8);
+            const coneMaterial = new THREE.MeshBasicMaterial({ 
+                color: color,
+                transparent: true,
+                opacity: 1.0
+            });
+            const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+            
+            // コーンの位置を設定
+            const conePosition = origin.clone().add(direction.clone().multiplyScalar(length - coneSize * 1.25));
+            cone.position.copy(conePosition);
+            
+            // コーンの向きを設定（方向ベクトルに向かって）
+            const up = new THREE.Vector3(0, 1, 0);
+            const quaternion = new THREE.Quaternion();
+            quaternion.setFromUnitVectors(up, direction);
+            cone.setRotationFromQuaternion(quaternion);
+            
+            scene.add(line);
+            scene.add(cone);
+            
+            wallForces.push({
+                line: line,
+                cone: cone,
+                lifetime: 2.0
+            });
+        }
+        
+        // 速度に基づいて色を返す関数（粒子と同じ色分け）
+        function getSpeedBasedColor(speed) {
+            // 色分けの範囲を調整して、より幅広い色が出るように
+            // 0-750 m/s: 青→緑
+            // 750-1500 m/s: 緑→赤
+            const ratio = Math.min(speed / 1500, 1);
+            
+            let r, g, b;
+            if (ratio < 0.5) {
+                // 青→緑
+                r = 0;
+                g = Math.floor(ratio * 2 * 255);
+                b = Math.floor((1 - ratio * 2) * 255);
+            } else {
+                // 緑→赤
+                r = Math.floor((ratio - 0.5) * 2 * 255);
+                g = Math.floor((1 - (ratio - 0.5) * 2) * 255);
+                b = 0;
+            }
+            
+            return (r << 16) | (g << 8) | b;
+        }
+        
+        function addWallImpact(position, axis) {
+            // 衝突点の円形表示
+            const geometry = new THREE.CircleGeometry(0.3, 16);
+            const material = new THREE.MeshBasicMaterial({
+                color: 0xffff00,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            const circle = new THREE.Mesh(geometry, material);
+            
+            // 円を壁に配置
+            circle.position.copy(position);
+            if (axis === 'x') circle.rotation.y = Math.PI / 2;
+            else if (axis === 'y') circle.rotation.x = Math.PI / 2;
+            
+            scene.add(circle);
+            wallImpacts.push({
+                mesh: circle,
+                lifetime: 2.0
+            });
+        }
+        
+        function updateForceVisualizations(dt) {
+            // 壁への力のフェードアウト
+            wallForces = wallForces.filter(force => {
+                force.lifetime -= dt;
+                if (force.lifetime <= 0) {
+                    scene.remove(force.line);
+                    scene.remove(force.cone);
+                    return false;
+                }
+                // フェードアウト効果
+                const opacity = force.lifetime / 2.0;
+                if (force.line) {
+                    force.line.material.opacity = opacity;
+                }
+                if (force.cone) {
+                    force.cone.material.opacity = opacity;
+                }
+                return true;
+            });
+            
+            // 衝突点のフェードアウト
+            wallImpacts = wallImpacts.filter(impact => {
+                impact.lifetime -= dt;
+                if (impact.lifetime <= 0) {
+                    scene.remove(impact.mesh);
+                    return false;
+                }
+                impact.mesh.material.opacity = impact.lifetime / 2.0 * 0.8;
+                return true;
+            });
+            
+            // 圧力ベクトルの更新（0.5秒ごと）
+            if (showPressureVectors && frameCount % 30 === 0) {
+                updatePressureVectors();
+            }
+        }
+        
+        function updatePressureVectors() {
+            // 既存の圧力ベクトルを削除
+            pressureVectors.forEach(vector => scene.remove(vector));
+            pressureVectors = [];
+            
+            const halfBox = boxSize / 2;
+            
+            // 各面の圧力ベクトルを作成
+            Object.entries(wallImpulses).forEach(([wall, impulse]) => {
+                if (impulse === 0) return; // 力積がゼロの場合はスキップ
+                
+                const axis = wall[1];
+                const sign = wall[0] === '+' ? 1 : -1;
+                
+                // ベクトルの位置（面の中心）
+                const position = new THREE.Vector3(0, 0, 0);
+                position[axis] = sign * halfBox;
+                
+                // ベクトルの方向（面の外側へ）
+                const direction = new THREE.Vector3(0, 0, 0);
+                direction[axis] = sign;
+                
+                // 力積から平均的な速度を推定
+                // 0.5秒間の累積力積から、平均的な衝突速度を逆算
+                const collisionCount = Math.max(1, particleCount * 0.5 * 0.1); // 推定衝突回数
+                const avgImpulsePerCollision = impulse / collisionCount;
+                const avgSpeed = avgImpulsePerCollision / (2 * m_gas) * 1000; // m/s
+                
+                // 長さを計算（最小1.0、最大5.0）
+                const lengthRatio = Math.min(avgSpeed / 800, 1);
+                const length = 1.0 + lengthRatio * 4.0;
+                
+                // 色を計算（粒子と同じ色分けシステムを使用）
+                const color = getSpeedBasedColor(avgSpeed);
+                
+                // 太い線のためにシリンダーを使用
+                const cylinderGeometry = new THREE.CylinderGeometry(0.15, 0.15, length, 8);
+                const cylinderMaterial = new THREE.MeshPhongMaterial({ 
+                    color: color,
+                    emissive: color,
+                    emissiveIntensity: 0.3
+                });
+                const cylinder = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
+                
+                // シリンダーの位置と向きを設定
+                const cylinderPosition = position.clone().add(direction.clone().multiplyScalar(length / 2));
+                cylinder.position.copy(cylinderPosition);
+                
+                // シリンダーを方向に向ける
+                const up = new THREE.Vector3(0, 1, 0);
+                const quaternion = new THREE.Quaternion();
+                quaternion.setFromUnitVectors(up, direction);
+                cylinder.setRotationFromQuaternion(quaternion);
+                
+                // 大きめの矢印の先端
+                const coneSize = 0.5;
+                const coneGeometry = new THREE.ConeGeometry(coneSize, coneSize * 2, 8);
+                const coneMaterial = new THREE.MeshPhongMaterial({ 
+                    color: color,
+                    emissive: color,
+                    emissiveIntensity: 0.3
+                });
+                const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+                
+                // コーンの位置を設定
+                const conePosition = position.clone().add(direction.clone().multiplyScalar(length - coneSize * 0.5));
+                cone.position.copy(conePosition);
+                
+                // コーンの向きを設定
+                cone.setRotationFromQuaternion(quaternion);
+                
+                scene.add(cylinder);
+                scene.add(cone);
+                pressureVectors.push(cylinder);
+                pressureVectors.push(cone);
+            });
+            
+            // 力積をリセット
+            Object.keys(wallImpulses).forEach(key => {
+                wallImpulses[key] = 0;
+            });
+        }
+        
+
+        
+        function updateParticleColor(particle) {
+            const speed = particle.velocity.length() * 1000;
+            // 粒子の色分けも同じ範囲に調整
+            // 0-750 m/s: 青→緑
+            // 750-1500 m/s: 緑→赤
+            const ratio = Math.min(speed / 1500, 1);
+            
+            let r, g, b;
+            if (ratio < 0.5) {
+                // 青→緑
+                r = 0;
+                g = ratio * 2;
+                b = 1 - ratio * 2;
+            } else {
+                // 緑→赤
+                r = (ratio - 0.5) * 2;
+                g = 1 - (ratio - 0.5) * 2;
+                b = 0;
+            }
+            
+            particle.mesh.material.color.setRGB(r, g, b);
+            particle.mesh.material.emissive.setRGB(r * 0.3, g * 0.3, b * 0.3);
+        }
+        
+        function updateDistribution() {
+            const canvas = document.getElementById('distribution-canvas');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width = canvas.offsetWidth;
+            const height = canvas.height = canvas.offsetHeight;
+            
+            ctx.clearRect(0, 0, width, height);
+            
+            // 速度データを収集
+            const speeds = particles.map(p => p.velocity.length() * 1000);
+            
+            // 固定された最大速度（常に3000 m/s）
+            const maxSpeed = 3000;
+            
+            // ヒストグラム作成
+            const bins = 30;
+            const binWidth = maxSpeed / bins;
+            const histogram = new Array(bins).fill(0);
+            
+            speeds.forEach(speed => {
+                const bin = Math.floor(speed / binWidth);
+                if (bin < bins) {
+                    histogram[bin]++;
+                }
+            });
+            
+            // 固定された縦軸の最大値（粒子数の30%）
+            const fixedMaxCount = particleCount * 0.3;
+            const barWidth = width / bins;
+            
+            // ヒストグラムを描画
+            histogram.forEach((count, i) => {
+                const barHeight = Math.min((count / fixedMaxCount) * height * 0.85, height * 0.85);
+                const speed = (i + 0.5) * binWidth;
+                
+                // 速度に基づく色を計算（getSpeedColorを使用）
+                const color = getSpeedColor(speed);
+                ctx.fillStyle = color;
+                
+                ctx.fillRect(
+                    i * barWidth,
+                    height - barHeight - 15,
+                    barWidth - 1,
+                    barHeight
+                );
+            });
+            
+
+            
+            // 軸ラベル
+            ctx.fillStyle = '#888';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            
+            // x軸ラベル（0, 1000, 2000, 3000 m/s）
+            for (let i = 0; i <= 3; i++) {
+                const speed = i * 1000;
+                const x = (speed / maxSpeed) * width;
+                ctx.fillText(speed + ' m/s', x, height - 5);
+            }
+            
+            // 統計情報を更新
+            updateStats(speeds);
+        }
+        
+        // 速度に基づいて色を返す関数
+        function getSpeedColor(speed) {
+            // 温度によらず、速度の絶対値で色を決定
+            // 0-750 m/s: 青→緑
+            // 750-1500 m/s: 緑→赤
+            const ratio = Math.min(speed / 1500, 1);
+            
+            let r, g, b;
+            if (ratio < 0.5) {
+                // 青→緑
+                r = 0;
+                g = Math.floor(ratio * 2 * 255);
+                b = Math.floor((1 - ratio * 2) * 255);
+            } else {
+                // 緑→赤
+                r = Math.floor((ratio - 0.5) * 2 * 255);
+                g = Math.floor((1 - (ratio - 0.5) * 2) * 255);
+                b = 0;
+            }
+            
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+        
+        function updateStats(speeds) {
+            const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+            const mostProbable = Math.sqrt(2 * k_B * temperature / m_gas);
+            const avgEnergy = 0.5 * m_gas * avgSpeed * avgSpeed / 1e-21;
+            
+            // 粒子密度の計算を修正
+            // boxSizeの単位をnmとして扱う（シミュレーション単位 → nm）
+            const boxVolumeNm3 = boxSize * boxSize * boxSize; // nm^3
+            const density = particleCount / boxVolumeNm3;
+            
+            document.getElementById('avg-speed').textContent = avgSpeed.toFixed(0);
+            document.getElementById('most-probable-speed').textContent = mostProbable.toFixed(0);
+            document.getElementById('avg-energy').textContent = avgEnergy.toFixed(2);
+            document.getElementById('density').textContent = density.toFixed(3);
+        }
+        
+        function setupMouseControls() {
+            let mouseDown = false;
+            let mouseX = 0;
+            let mouseY = 0;
+            
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                mouseDown = true;
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                mouseDown = false;
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (!mouseDown) return;
+                
+                const deltaX = e.clientX - mouseX;
+                const deltaY = e.clientY - mouseY;
+                
+                // カメラを回転
+                const spherical = new THREE.Spherical();
+                spherical.setFromVector3(camera.position);
+                
+                spherical.theta -= deltaX * 0.01;
+                spherical.phi += deltaY * 0.01;
+                spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+                
+                camera.position.setFromSpherical(spherical);
+                camera.lookAt(0, 0, 0);
+                
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+            
+            renderer.domElement.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const scale = e.deltaY > 0 ? 1.1 : 0.9;
+                camera.position.multiplyScalar(scale);
+                camera.lookAt(0, 0, 0);
+            });
+        }
+        
+        function setupEventListeners() {
+            // 粒子数
+            document.getElementById('particles').addEventListener('input', (e) => {
+                particleCount = parseInt(e.target.value);
+                document.getElementById('particle-count').textContent = particleCount;
+                createParticles();
+            });
+            
+            // 温度
+            document.getElementById('temperature').addEventListener('input', (e) => {
+                temperature = parseInt(e.target.value);
+                document.getElementById('temperature-value').textContent = temperature;
+                particles.forEach(p => {
+                    p.velocity = generateVelocity();
+                });
+            });
+            
+            // 時間スケール
+            document.getElementById('time-scale').addEventListener('input', (e) => {
+                timeScale = parseFloat(e.target.value);
+                document.getElementById('time-scale-value').textContent = timeScale.toFixed(1);
+            });
+            
+            // リセット
+            document.getElementById('reset-btn').addEventListener('click', () => {
+                createParticles();
+            });
+            
+            // 一時停止
+            document.getElementById('pause-btn').addEventListener('click', () => {
+                isPaused = !isPaused;
+                document.getElementById('pause-btn').textContent = 
+                    isPaused ? '再生' : '一時停止';
+            });
+            
+            // 力の可視化オプション
+            document.getElementById('show-wall-forces').addEventListener('change', (e) => {
+                showWallForces = e.target.checked;
+                if (!showWallForces) {
+                    // 既存の力ベクトルを削除
+                    wallForces.forEach(force => {
+                        scene.remove(force.line);
+                        scene.remove(force.cone);
+                    });
+                    wallForces = [];
+                    wallImpacts.forEach(impact => scene.remove(impact.mesh));
+                    wallImpacts = [];
+                }
+            });
+            
+            document.getElementById('show-pressure-vectors').addEventListener('change', (e) => {
+                showPressureVectors = e.target.checked;
+                if (!showPressureVectors) {
+                    // 既存の圧力ベクトルを削除
+                    pressureVectors.forEach(vector => scene.remove(vector));
+                    pressureVectors = [];
+                    // 力積をリセット
+                    Object.keys(wallImpulses).forEach(key => {
+                        wallImpulses[key] = 0;
+                    });
+                }
+            });
+            
+            // ウィンドウリサイズ
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+        
+        let lastTime = 0;
+        let frameCount = 0;
+        
+        function animate(currentTime) {
+            animationId = requestAnimationFrame(animate);
+            
+            const deltaTime = Math.min((currentTime - lastTime) * 0.001, 0.1);
+            lastTime = currentTime;
+            
+            updateParticles(deltaTime);
+            
+            // 10フレームごとに分布を更新
+            frameCount++;
+            if (frameCount % 10 === 0) {
+                updateDistribution();
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // 開始
+        init();
+    </script>
+</body>
+</html>
