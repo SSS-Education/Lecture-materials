@@ -355,268 +355,6 @@
             scene.add(box);
         }
         
-        function initOrthoViews() {
-            const views = ['xy', 'yz', 'zx'];
-            const extent = boxSize * 0.6;
-            
-            views.forEach(view => {
-                // 既存のレンダラーがあれば削除
-                if (orthoRenderers[view]) {
-                    orthoRenderers[view].dispose();
-                }
-                
-                // キャンバス取得
-                const canvas = document.getElementById(`${view}-view`);
-                if (!canvas) return;
-                
-                // レンダラー作成
-                const renderer = new THREE.WebGLRenderer({ 
-                    canvas: canvas,
-                    antialias: false,
-                    powerPreference: "low-power"
-                });
-                renderer.setSize(200, 200);
-                renderer.setClearColor(0x0a0a0a, 1);
-                orthoRenderers[view] = renderer;
-                
-                // シーン作成
-                const scene = new THREE.Scene();
-                orthoScenes[view] = scene;
-                
-                // 正射影カメラ作成
-                const camera = new THREE.OrthographicCamera(
-                    -extent, extent,
-                    extent, -extent,
-                    0.1, 100
-                );
-                
-                // カメラ位置設定
-                if (view === 'xy') {
-                    camera.position.set(0, 0, 20);
-                    camera.lookAt(0, 0, 0);
-                } else if (view === 'yz') {
-                    camera.position.set(20, 0, 0);
-                    camera.lookAt(0, 0, 0);
-                } else if (view === 'zx') {
-                    camera.position.set(0, 20, 0);
-                    camera.lookAt(0, 0, 0);
-                    camera.up.set(0, 0, 1);
-                }
-                
-                orthoCameras[view] = camera;
-                
-                // ライト追加
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-                scene.add(ambientLight);
-                
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
-                if (view === 'xy') {
-                    directionalLight.position.set(0, 0, 10);
-                } else if (view === 'yz') {
-                    directionalLight.position.set(10, 0, 0);
-                } else if (view === 'zx') {
-                    directionalLight.position.set(0, 10, 0);
-                }
-                scene.add(directionalLight);
-                
-                // 箱の枠を追加
-                const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
-                const edges = new THREE.EdgesGeometry(geometry);
-                const line = new THREE.LineSegments(
-                    edges,
-                    new THREE.LineBasicMaterial({ color: 0x00ff00, opacity: 0.5, transparent: true })
-                );
-                line.name = 'box-frame';
-                line.userData.boxSize = boxSize;
-                scene.add(line);
-            });
-            
-            console.log('Ortho views initialized:', orthoRenderers);
-        }
-        
-        function updateOrthoViews() {
-            if (!showOrthoViews || !orthoScenes.xy) return;
-            
-            const views = ['xy', 'yz', 'zx'];
-            
-            views.forEach(view => {
-                const scene = orthoScenes[view];
-                const camera = orthoCameras[view];
-                const renderer = orthoRenderers[view];
-                
-                if (!scene || !camera || !renderer) return;
-                
-                // 共有ジオメトリを先に定義
-                const sphereGeometry = new THREE.SphereGeometry(0.15, 8, 8);
-                
-                // すべての子オブジェクトを削除（箱とライト以外）
-                const toRemove = [];
-                scene.children.forEach(child => {
-                    if (child.name !== 'box-frame' && !child.isLight) {
-                        toRemove.push(child);
-                    }
-                });
-                toRemove.forEach(child => {
-                    scene.remove(child);
-                    if (child.geometry && child.geometry !== sphereGeometry) {
-                        child.geometry.dispose();
-                    }
-                    if (child.material) {
-                        child.material.dispose();
-                    }
-                });
-                
-                // 粒子を追加（現在の位置で）
-                particles.forEach(particle => {
-                    const material = new THREE.MeshPhongMaterial({
-                        color: particle.mesh.material.color,
-                        emissive: particle.mesh.material.emissive,
-                        emissiveIntensity: 0.5
-                    });
-                    const mesh = new THREE.Mesh(sphereGeometry, material);
-                    
-                    // 現在の粒子の位置をコピー
-                    mesh.position.copy(particle.mesh.position);
-                    
-                    scene.add(mesh);
-                });
-                
-                // 壁への衝突力ベクトルを表示
-                if (showWallForces) {
-                    wallForces.forEach(force => {
-                        if (force.line && force.cone) {
-                            // ラインの始点と終点を取得
-                            const positions = force.line.geometry.attributes.position;
-                            if (!positions) return;
-                            
-                            const posArray = positions.array;
-                            const start = new THREE.Vector3(posArray[0], posArray[1], posArray[2]);
-                            const end = new THREE.Vector3(posArray[3], posArray[4], posArray[5]);
-                            const direction = end.clone().sub(start).normalize();
-                            
-                            // 表示すべきかチェック
-                            let shouldShow = false;
-                            if (view === 'xy' && Math.abs(direction.z) > 0.9) shouldShow = true;
-                            if (view === 'yz' && Math.abs(direction.x) > 0.9) shouldShow = true;
-                            if (view === 'zx' && Math.abs(direction.y) > 0.9) shouldShow = true;
-                            
-                            if (shouldShow) {
-                                // ラインを作成
-                                const lineGeometry = new THREE.BufferGeometry().setFromPoints([start, end]);
-                                const lineMaterial = new THREE.LineBasicMaterial({ 
-                                    color: force.line.material.color,
-                                    opacity: force.line.material.opacity || 1,
-                                    transparent: true
-                                });
-                                const line = new THREE.Line(lineGeometry, lineMaterial);
-                                scene.add(line);
-                                
-                                // コーンを作成
-                                const coneGeometry = new THREE.ConeGeometry(0.2, 0.5, 8);
-                                const coneMaterial = new THREE.MeshBasicMaterial({ 
-                                    color: force.cone.material.color,
-                                    opacity: force.cone.material.opacity || 1,
-                                    transparent: true
-                                });
-                                const cone = new THREE.Mesh(coneGeometry, coneMaterial);
-                                cone.position.copy(force.cone.position);
-                                cone.quaternion.copy(force.cone.quaternion);
-                                scene.add(cone);
-                            }
-                        }
-                    });
-                    
-                    // 衝突点の表示
-                    wallImpacts.forEach(impact => {
-                        if (impact.mesh) {
-                            const position = impact.mesh.position;
-                            let shouldShow = false;
-                            
-                            if (view === 'xy' && Math.abs(position.z) > boxSize/2 - 0.2) shouldShow = true;
-                            if (view === 'yz' && Math.abs(position.x) > boxSize/2 - 0.2) shouldShow = true;
-                            if (view === 'zx' && Math.abs(position.y) > boxSize/2 - 0.2) shouldShow = true;
-                            
-                            if (shouldShow) {
-                                const circleGeometry = new THREE.CircleGeometry(0.3, 16);
-                                const circleMaterial = new THREE.MeshBasicMaterial({
-                                    color: 0xffff00,
-                                    transparent: true,
-                                    opacity: impact.mesh.material.opacity || 0.8,
-                                    side: THREE.DoubleSide
-                                });
-                                const circle = new THREE.Mesh(circleGeometry, circleMaterial);
-                                circle.position.copy(position);
-                                
-                                if (view === 'yz') {
-                                    circle.rotation.y = Math.PI / 2;
-                                } else if (view === 'zx') {
-                                    circle.rotation.x = Math.PI / 2;
-                                }
-                                
-                                scene.add(circle);
-                            }
-                        }
-                    });
-                }
-                
-                // 面ごとの圧力ベクトルを表示
-                if (showPressureVectors && pressureVectors.length > 0) {
-                    for (let i = 0; i < pressureVectors.length; i += 2) {
-                        const cylinder = pressureVectors[i];
-                        const cone = pressureVectors[i + 1];
-                        
-                        if (cylinder && cone) {
-                            const position = cylinder.position;
-                            let shouldShow = false;
-                            
-                            if (view === 'xy' && Math.abs(position.z) > boxSize/2 - 0.1) shouldShow = true;
-                            if (view === 'yz' && Math.abs(position.x) > boxSize/2 - 0.1) shouldShow = true;
-                            if (view === 'zx' && Math.abs(position.y) > boxSize/2 - 0.1) shouldShow = true;
-                            
-                            if (shouldShow) {
-                                // シリンダーをコピー
-                                const cylGeometry = cylinder.geometry.clone();
-                                const cylMaterial = cylinder.material.clone();
-                                const newCylinder = new THREE.Mesh(cylGeometry, cylMaterial);
-                                newCylinder.position.copy(cylinder.position);
-                                newCylinder.quaternion.copy(cylinder.quaternion);
-                                scene.add(newCylinder);
-                                
-                                // コーンをコピー
-                                const coneGeometry = cone.geometry.clone();
-                                const coneMaterial = cone.material.clone();
-                                const newCone = new THREE.Mesh(coneGeometry, coneMaterial);
-                                newCone.position.copy(cone.position);
-                                newCone.quaternion.copy(cone.quaternion);
-                                scene.add(newCone);
-                            }
-                        }
-                    }
-                }
-                
-                // 箱のサイズが変更された場合は更新
-                const existingBox = scene.getObjectByName('box-frame');
-                if (existingBox && existingBox.userData.boxSize !== boxSize) {
-                    scene.remove(existingBox);
-                    const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
-                    const edges = new THREE.EdgesGeometry(geometry);
-                    const line = new THREE.LineSegments(
-                        edges,
-                        new THREE.LineBasicMaterial({ color: 0x00ff00, opacity: 0.5, transparent: true })
-                    );
-                    line.name = 'box-frame';
-                    line.userData.boxSize = boxSize;
-                    scene.add(line);
-                }
-                
-                // レンダリング
-                renderer.render(scene, camera);
-            });
-            
-            // ジオメトリの破棄
-            sphereGeometry.dispose();
-        }
-        
         function createParticles() {
             // 既存の粒子を削除
             particles.forEach(p => scene.remove(p.mesh));
@@ -981,8 +719,6 @@
             });
         }
         
-
-        
         function updateParticleColor(particle) {
             const speed = particle.velocity.length() * 1000;
             // 粒子の色分けも同じ範囲に調整
@@ -1053,8 +789,6 @@
                     barHeight
                 );
             });
-            
-
             
             // 軸ラベル
             ctx.fillStyle = '#888';
@@ -1223,6 +957,38 @@
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+            
+            // モバイルメニューボタン
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const mobileInfoBtn = document.getElementById('mobile-info-btn');
+            const controls = document.getElementById('controls');
+            const infoPanel = document.getElementById('info-panel');
+            
+            if (mobileMenuBtn) {
+                mobileMenuBtn.addEventListener('click', () => {
+                    controls.classList.toggle('show');
+                    infoPanel.classList.remove('show');
+                });
+            }
+            
+            if (mobileInfoBtn) {
+                mobileInfoBtn.addEventListener('click', () => {
+                    infoPanel.classList.toggle('show');
+                    controls.classList.remove('show');
+                });
+            }
+            
+            // モバイルでパネルの外をタップしたら閉じる
+            document.addEventListener('click', (e) => {
+                if (window.innerWidth <= 768) {
+                    if (!controls.contains(e.target) && e.target !== mobileMenuBtn) {
+                        controls.classList.remove('show');
+                    }
+                    if (!infoPanel.contains(e.target) && e.target !== mobileInfoBtn) {
+                        infoPanel.classList.remove('show');
+                    }
+                }
             });
         }
         
